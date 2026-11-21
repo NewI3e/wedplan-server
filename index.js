@@ -69,6 +69,69 @@ const users = database.collection("user");
 const ServiceCollection = database.collection("services");
 
 const BookingCollection = database.collection("bookings");
+
+
+const SubscriptionCollection = database.collection("subscriptions");
+
+const FREE_SERVICE_LIMIT = 3;
+
+function normalizeEmail(email) {
+    return String(email || "").trim().toLowerCase();
+}
+
+
+async function getVendorPlan(email) {
+    const vendorEmail = normalizeEmail(email);
+
+    if (!vendorEmail) {
+        return { plan: "free", subscription: null };
+    }
+
+    const now = new Date();
+
+    const subscription = await SubscriptionCollection.findOne({
+        vendorEmail,
+        status: "active",
+        $or: [
+            { currentPeriodEnd: { $exists: false } },
+            { currentPeriodEnd: null },
+            { currentPeriodEnd: { $gt: now } },
+        ],
+    });
+
+    if (!subscription) {
+        return { plan: "free", subscription: null };
+    }
+
+    return { plan: subscription.plan || "premium", subscription };
+}
+
+/**
+ * Pending, approved and paused services all count toward the limit
+
+ */
+async function countVendorServices(email) {
+    return ServiceCollection.countDocuments({
+        vendorEmail: normalizeEmail(email),
+        status: { $ne: "rejected" },
+    });
+}
+
+async function getServiceUsage(email) {
+    const { plan } = await getVendorPlan(email);
+    const used = await countVendorServices(email);
+    const isFree = plan === "free";
+    const limit = isFree ? FREE_SERVICE_LIMIT : null;
+
+    return {
+        plan,
+        limit,
+        used,
+        remaining: limit === null ? null : Math.max(0, limit - used),
+        canCreate: !isFree || used < FREE_SERVICE_LIMIT,
+    };
+}
+
 app.get('/', (req, res) => {
   res.send('wedplan server!');
 });
@@ -96,6 +159,9 @@ app.post("/bookings", async (req, res) => {
         } = req.body;
 
         // Validate required fields
+
+
+
         if (
             !serviceId ||
             !ObjectId.isValid(serviceId) ||
@@ -194,6 +260,8 @@ app.post("/bookings", async (req, res) => {
 
 
 // Cancel a customer's pending booking
+
+
 app.patch("/bookings/:id/cancel", async (req, res) => {
     try {
         const { id } = req.params;
@@ -228,6 +296,9 @@ app.patch("/bookings/:id/cancel", async (req, res) => {
         }
 
         // A customer may only cancel their own request.
+
+
+
         if (booking.customerEmail !== normalizedEmail) {
             return res.status(403).send({
                 success: false,
@@ -316,6 +387,7 @@ app.get("/bookings/vendor", async (req, res) => {
 
 
 // Accept or reject a pending booking as the vendor
+
 app.patch("/bookings/:id/decision", async (req, res) => {
     try {
         const { id } = req.params;
@@ -475,6 +547,19 @@ app.post("/services", async (req, res) => {
             })
         }
 
+        // Enforce the free plan limit 
+        const normalizedVendorEmail = vendorEmail.trim().toLowerCase();
+        const usage = await getServiceUsage(normalizedVendorEmail);
+
+        if (!usage.canCreate) {
+            return res.status(403).send({
+                success: false,
+                code: "SUBSCRIPTION_REQUIRED",
+                message: `You've reached the Free plan limit of ${FREE_SERVICE_LIMIT} services. Subscribe to add more.`,
+                usage,
+            });
+        }
+
         // Create service document
         const service = {
             name: name.trim(),
@@ -483,7 +568,7 @@ app.post("/services", async (req, res) => {
             price: Number(price),
             description: description.trim(),
             photoUrl: photoUrl || null,
-            vendorEmail: vendorEmail.trim().toLowerCase(),
+            vendorEmail: normalizedVendorEmail,
             status: "pending",
             available: true,
             createdAt: new Date(),
@@ -515,6 +600,87 @@ app.get('/services', async (req, res) => {
   res.send(result);
 });
 
+// get total services count
+// app.get('/services/count', async (req, res) => {
+//   try {
+//     const count = await ServiceCollection.countDocuments();
+//     res.send({ count });
+//   } catch (error) {
+//     console.error("Error fetching services count:", error);
+//     res.status(500).send({ error: "Failed to fetch services count" });
+//   }
+// });
+
+
+
+// app.get('/services/count', async (req, res) => {
+//   try {
+//     const result = await ServiceCollection.aggregate([
+//       {
+//         $group: {
+//           _id: "$vendorEmail",
+//           count: { $sum: 1 }
+//         }
+//       },
+//       {
+//         $project: {
+//           _id: 0,
+//           vendorEmail: "$_id",
+//           count: 1
+//         }
+//       }
+//     ]).toArray();
+
+//     res.send(result);
+//   } catch (error) {
+//     console.error("Error fetching services count:", error);
+//     res.status(500).send({ error: "Failed to fetch services count" });
+//   }
+// });
+
+app.get('/services/count', async (req, res) => {
+  try {
+    const { vendorEmail } = req.query;
+
+    const query = {};
+
+    if (vendorEmail) {
+      query.vendorEmail = vendorEmail;
+    }
+
+    const count = await ServiceCollection.countDocuments(query);
+
+    res.send({ count });
+  } catch (error) {
+    console.error("Error fetching services count:", error);
+    res.status(500).send({ error: "Failed to fetch services count" });
+  }
+});
+
+
+
+// Plan + usage for the vendor dashboard and the add-service form.
+app.get('/services/usage', async (req, res) => {
+  try {
+    const { vendorEmail } = req.query;
+
+    if (!vendorEmail || typeof vendorEmail !== "string") {
+      return res.status(400).send({
+        success: false,
+        message: "Vendor email is required.",
+      });
+    }
+
+    const usage = await getServiceUsage(vendorEmail);
+
+    res.send({ success: true, ...usage });
+  } catch (error) {
+    console.error("Error fetching service usage:", error);
+    res.status(500).send({ error: "Failed to fetch service usage" });
+  }
+});
+
+
 
 app.delete('/services/:id', async (req, res) => {
   const id = req.params.id;
@@ -524,14 +690,52 @@ app.delete('/services/:id', async (req, res) => {
 });
 
 app.patch('/services/:id', async (req, res) => {
-  const id = req.params.id;
-  const updatedService = req.body;
-  const filter = { _id: new ObjectId(id) };
-  const updateDoc = {
-    $set: updatedService,
-  };
-  const result = await ServiceCollection.updateOne(filter, updateDoc);
-  res.send(result);
+  try {
+    const id = req.params.id;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid service id.",
+      });
+    }
+
+
+    const editableFields = [
+      "name",
+      "category",
+      "location",
+      "price",
+      "description",
+      "photoUrl",
+      "available",
+    ];
+
+    const updatedService = {};
+
+    for (const field of editableFields) {
+      if (req.body[field] !== undefined) {
+        updatedService[field] = req.body[field];
+      }
+    }
+
+    if (Object.keys(updatedService).length === 0) {
+      return res.status(400).send({
+        success: false,
+        message: "No editable service fields were provided.",
+      });
+    }
+
+    const filter = { _id: new ObjectId(id) };
+    const updateDoc = {
+      $set: updatedService,
+    };
+    const result = await ServiceCollection.updateOne(filter, updateDoc);
+    res.send(result);
+  } catch (error) {
+    console.error("Update service error:", error);
+    res.status(500).send({ error: "Failed to update service" });
+  }
 });
 
 
