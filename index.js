@@ -424,7 +424,7 @@ app.patch("/bookings/:id/decision", async (req, res) => {
             });
         }
 
-        // A vendor may only decide on requests addressed to them.
+        
         if (booking.vendorEmail !== normalizedEmail) {
             return res.status(403).send({
                 success: false,
