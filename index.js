@@ -526,7 +526,7 @@ app.post("/services", async (req, res) => {
             vendorEmail,
         } = req.body
 
-        // Validate service information
+        
         if (
             !name?.trim() ||
             !category ||
