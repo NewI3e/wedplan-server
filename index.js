@@ -253,7 +253,7 @@ app.post("/bookings", async (req, res) => {
 });
 
 
-// Cancel a customer's pending booking
+
 
 
 app.patch("/bookings/:id/cancel", async (req, res) => {
