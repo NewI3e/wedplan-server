@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { MongoClient,ObjectId } from 'mongodb';
+import { MongoClient, ObjectId } from 'mongodb';
 
 dotenv.config();
 
@@ -14,54 +14,48 @@ app.use(express.json());
 
 const client = new MongoClient(`mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.othdrf.mongodb.net/`);
 
+
 const allowedOrigins = (
-  process.env.CLIENT_ORIGINS ||
-  "http://localhost:3000,http://127.0.0.1:3000"
+    process.env.CLIENT_ORIGINS ||
+    "http://localhost:3000,http://127.0.0.1:3000,https://wedplan-client-theta-khaki.vercel.app"
 )
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 
 app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow tools/curl without an Origin header.
-      if (!origin) return callback(null, true);
+    cors({
+        origin: (origin, callback) => {
+            
+            if (!origin) {
+                return callback(null, true);
+            }
 
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
+            if (allowedOrigins.includes(origin)) {
+                return callback(null, true);
+            }
 
-      return callback(new Error(`Origin not allowed by CORS: ${origin}`));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
+            return callback(
+                new Error(`Origin not allowed by CORS: ${origin}`)
+            );
+        },
+        credentials: true,
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allowedHeaders: ["Content-Type", "Authorization"],
+    })
 );
 
-
-
-
-app.use(
-  cors({
-    origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
 export async function connectToMongoDB() {
-  try {
-    await client.connect();
-    console.log("You successfully connected to MongoDB!");
-    return client;
-  } catch (err) {
-    console.dir(err);
-  }
+    try {
+        await client.connect();
+        console.log("You successfully connected to MongoDB!");
+        return client;
+    } catch (err) {
+        console.dir(err);
+    }
 }
 
-const connectClint= await connectToMongoDB();
+const connectClint = await connectToMongoDB();
 
 const database = connectClint.db("wedplandb");
 const users = database.collection("user");
@@ -133,13 +127,13 @@ async function getServiceUsage(email) {
 }
 
 app.get('/', (req, res) => {
-  res.send('wedplan server!');
+    res.send('wedplan server!');
 });
 
 app.get('/users', async (req, res) => {
-  const cursor = await users.find({});
-  const result = await cursor.toArray();
-  res.send(result);
+    const cursor = await users.find({});
+    const result = await cursor.toArray();
+    res.send(result);
 
 
 })
@@ -147,7 +141,7 @@ app.get('/users', async (req, res) => {
 
 
 
-// Create booking
+
 app.post("/bookings", async (req, res) => {
     try {
         const {
@@ -158,7 +152,7 @@ app.post("/bookings", async (req, res) => {
             message,
         } = req.body;
 
-        // Validate required fields
+        
 
 
 
@@ -175,7 +169,7 @@ app.post("/bookings", async (req, res) => {
             });
         }
 
-        // Find service
+        
         const service = await ServiceCollection.findOne({
             _id: new ObjectId(serviceId),
         });
@@ -595,9 +589,9 @@ app.post("/services", async (req, res) => {
 
 
 app.get('/services', async (req, res) => {
-  const cursor = await ServiceCollection.find({});
-  const result = await cursor.toArray();
-  res.send(result);
+    const cursor = await ServiceCollection.find({});
+    const result = await cursor.toArray();
+    res.send(result);
 });
 
 // get total services count
@@ -639,103 +633,103 @@ app.get('/services', async (req, res) => {
 // });
 
 app.get('/services/count', async (req, res) => {
-  try {
-    const { vendorEmail } = req.query;
+    try {
+        const { vendorEmail } = req.query;
 
-    const query = {};
+        const query = {};
 
-    if (vendorEmail) {
-      query.vendorEmail = vendorEmail;
+        if (vendorEmail) {
+            query.vendorEmail = vendorEmail;
+        }
+
+        const count = await ServiceCollection.countDocuments(query);
+
+        res.send({ count });
+    } catch (error) {
+        console.error("Error fetching services count:", error);
+        res.status(500).send({ error: "Failed to fetch services count" });
     }
-
-    const count = await ServiceCollection.countDocuments(query);
-
-    res.send({ count });
-  } catch (error) {
-    console.error("Error fetching services count:", error);
-    res.status(500).send({ error: "Failed to fetch services count" });
-  }
 });
 
 
 
 // Plan + usage for the vendor dashboard and the add-service form.
 app.get('/services/usage', async (req, res) => {
-  try {
-    const { vendorEmail } = req.query;
+    try {
+        const { vendorEmail } = req.query;
 
-    if (!vendorEmail || typeof vendorEmail !== "string") {
-      return res.status(400).send({
-        success: false,
-        message: "Vendor email is required.",
-      });
+        if (!vendorEmail || typeof vendorEmail !== "string") {
+            return res.status(400).send({
+                success: false,
+                message: "Vendor email is required.",
+            });
+        }
+
+        const usage = await getServiceUsage(vendorEmail);
+
+        res.send({ success: true, ...usage });
+    } catch (error) {
+        console.error("Error fetching service usage:", error);
+        res.status(500).send({ error: "Failed to fetch service usage" });
     }
-
-    const usage = await getServiceUsage(vendorEmail);
-
-    res.send({ success: true, ...usage });
-  } catch (error) {
-    console.error("Error fetching service usage:", error);
-    res.status(500).send({ error: "Failed to fetch service usage" });
-  }
 });
 
 
 
 app.delete('/services/:id', async (req, res) => {
-  const id = req.params.id;
-  const query = { _id: new ObjectId(id) };
-  const result = await ServiceCollection.deleteOne(query);
-  res.send(result);
+    const id = req.params.id;
+    const query = { _id: new ObjectId(id) };
+    const result = await ServiceCollection.deleteOne(query);
+    res.send(result);
 });
 
 app.patch('/services/:id', async (req, res) => {
-  try {
-    const id = req.params.id;
+    try {
+        const id = req.params.id;
 
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).send({
-        success: false,
-        message: "Invalid service id.",
-      });
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).send({
+                success: false,
+                message: "Invalid service id.",
+            });
+        }
+
+
+        const editableFields = [
+            "name",
+            "category",
+            "location",
+            "price",
+            "description",
+            "photoUrl",
+            "available",
+        ];
+
+        const updatedService = {};
+
+        for (const field of editableFields) {
+            if (req.body[field] !== undefined) {
+                updatedService[field] = req.body[field];
+            }
+        }
+
+        if (Object.keys(updatedService).length === 0) {
+            return res.status(400).send({
+                success: false,
+                message: "No editable service fields were provided.",
+            });
+        }
+
+        const filter = { _id: new ObjectId(id) };
+        const updateDoc = {
+            $set: updatedService,
+        };
+        const result = await ServiceCollection.updateOne(filter, updateDoc);
+        res.send(result);
+    } catch (error) {
+        console.error("Update service error:", error);
+        res.status(500).send({ error: "Failed to update service" });
     }
-
-
-    const editableFields = [
-      "name",
-      "category",
-      "location",
-      "price",
-      "description",
-      "photoUrl",
-      "available",
-    ];
-
-    const updatedService = {};
-
-    for (const field of editableFields) {
-      if (req.body[field] !== undefined) {
-        updatedService[field] = req.body[field];
-      }
-    }
-
-    if (Object.keys(updatedService).length === 0) {
-      return res.status(400).send({
-        success: false,
-        message: "No editable service fields were provided.",
-      });
-    }
-
-    const filter = { _id: new ObjectId(id) };
-    const updateDoc = {
-      $set: updatedService,
-    };
-    const result = await ServiceCollection.updateOne(filter, updateDoc);
-    res.send(result);
-  } catch (error) {
-    console.error("Update service error:", error);
-    res.status(500).send({ error: "Failed to update service" });
-  }
 });
 
 
@@ -779,5 +773,9 @@ app.get("/My-services", async (req, res) => {
 
 
 app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
+    console.log(`Example app listening on port ${port}`);
 });
+
+
+// Export the Express app
+export default app;
