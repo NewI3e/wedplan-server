@@ -541,7 +541,7 @@ app.post("/services", async (req, res) => {
             })
         }
 
-        // Enforce the free plan limit 
+       
         const normalizedVendorEmail = vendorEmail.trim().toLowerCase();
         const usage = await getServiceUsage(normalizedVendorEmail);
 
@@ -554,7 +554,7 @@ app.post("/services", async (req, res) => {
             });
         }
 
-        // Create service document
+        
         const service = {
             name: name.trim(),
             category,
@@ -653,7 +653,7 @@ app.get('/services/count', async (req, res) => {
 
 
 
-// Plan + usage for the vendor dashboard and the add-service form.
+
 app.get('/services/usage', async (req, res) => {
     try {
         const { vendorEmail } = req.query;
